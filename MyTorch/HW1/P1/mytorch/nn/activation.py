@@ -126,6 +126,38 @@ class Softmax:
 
     def backward(self, dLdA):
 
+        #firstly, for a given activation vector A and a preactivation vector Z
+        #dAdZ is a Jacobian J of the shape (Cout x Cout)
+        #dLdZ is the gradient vector and is given by dLdA @ dAdZ
+        #you see for each A and Z pair, there is a different jacobian and hence, this operation cannot be
+        # so easily handled by vectorization
+        #we'll have to do it for each A and Z pair separately
+        #total N such pairs
 
+        # Calculate the batch size and number of features
+        batch_size=dLdA.shape[0]
+        num_features=dLdA.shape[1]
+
+        # Initialize the final output dLdZ with all zeros. Refer to the writeup and think about the shape.
+        dLdZ=np.zeros_like(dLdA)
+
+
+        # Fill dLdZ one data point (row) at a time
+        for row in range (batch_size):
+
+            # Initialize the Jacobian with all zeros.
+            jacobian= np.zeros(shape=(num_features, num_features))
+
+            # Fill the Jacobian matrix according to the conditions described in the writeup
+            for i in range(num_features):
+                for j in range(num_features):
+                    if i==j:
+                        jacobian[i][j]= self.A[row,i] * (1- self.A[row, i])
+                    else:
+                        jacobian[i][j]= -(self.A[row, i]) * self.A[row, j]
+
+
+            # Calculate the derivative of the loss with respect to the i-th input
+            dLdZ[row] = dLdA[row] @ jacobian
 
         return dLdZ
