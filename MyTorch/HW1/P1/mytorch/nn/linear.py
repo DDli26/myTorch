@@ -52,8 +52,11 @@ class Linear:
     def backward(self, dLdZ):
         """
         in this function , we shall compute the gradient wrt the parameters of this layer object,
-        also we want to  compute the derivative wrt to the input of the layer: A(NxCout),
-        so that it can be propogated back to previous layers
+        we must ensure that the derivative matrices or vectors match the dimension of the matrices or vectors
+        we are finding the derivative for, this would make gradient descent easier for us
+
+        we also want to  compute the derivative wrt to the input of the layer: A(NxCout),
+        so that it can be propagated back to previous layers
         Cin--> no. of input neurons for this layer object
         Cout--> no. of output neurons for this layer object
 
@@ -87,9 +90,13 @@ class Linear:
         #with respect to the bias of ith output neuron, the shape of the vector will be
         # we can then divide dLdb by the batch size to obtain the average batch gradient
         #which will be used for gradient descent
-        self.dLdb= np.sum(dLdZ, axis=0).reshape(-1, 1) # Coutx1, this was the dimension specified in the writeup
+        self.dLdb= np.sum(dLdZ, axis=0).reshape(-1, 1) # Coutx1, to match the dimensions of self.b
 
         return self.dLdA
+
+
+
+
 # testing that the forward pass implementation works
 # np.random.seed(42)
 #
