@@ -33,4 +33,4 @@ DEBUG_AND_GRADE_SGD_momentum_flag = True
 
 # flags for batchnorm.py
 
-DEBUG_AND_GRADE_BATCHNORM_flag = True
+DEBUG_AND_GRADE_BATCHNORM_flag = False
