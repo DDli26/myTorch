@@ -11,30 +11,27 @@ class MSELoss:
         :Return: MSE Loss(scalar)
 
         """
+        #so we'll have to calculate row-wise msc, and MSE will be a vector of dimension Nx1
+        #where N is batch size
+        self.A=A #we'll need this for the backward pass
+        self.Y=Y
+        square_error= np.square(self.A - self.Y)
+        self.L= np.mean(square_error, axis=1)  #MSE
 
-        self.A = A
-        self.Y = Y
+        return self.L
 
-        self.N = A.shape[0]
-        self.C = A.shape[1]
-
-        se = (A - Y) * (A - Y)
-
-        col_ones = np.ones((self.C, 1))
-        row_ones = np.ones((self.N, 1))
-
-        sse = row_ones.T @ se @ col_ones
-
-        mse = sse / (self.N * self.C)
-
-        return mse
 
     def backward(self):
+        pass
 
-        dLdA = 2 * (self.A - self.Y) / (self.N * self.C)
 
-        return dLdA
-
+# a= np.random.randint(1,5, size=(2,2))
+# y=np.random.randint(1,5, size=(2,2))
+# print("a:\n",a,"\n\nY:\n", y)
+# print("\nsquare_error\n")
+# print(np.square(a - y))
+# print("\nMSE\n")
+# print( np.mean(np.square(a - y), axis=1).reshape())
 
 class CrossEntropyLoss:
 
