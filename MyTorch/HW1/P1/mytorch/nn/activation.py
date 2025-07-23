@@ -112,9 +112,10 @@ class Softmax:
         Remember that Softmax does not act element-wise.
         It will use an entire row of Z to compute an output element.
         """
-        #Z and A will both be NxCout
+        #Z and output A will both be NxCout
         # ith row corresponds to ith input of the batch
-        # in softmax every element of a row in A depends on every element of Z
+        # in softmax every element of a row in A depends on every element of the
+        # corresponding row of Z
 
         exp=np.exp(Z)
         #find the row-wise sum of exp

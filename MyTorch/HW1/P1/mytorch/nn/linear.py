@@ -78,18 +78,26 @@ class Linear:
         """
         self.dLdA= dLdZ @ self.W
 
+        #coming to dLdW and dLdb, now we know that the derivative of loss(scalar) with respect to a given parameter
+        #w(l,i,j) or b(l,k) is a sum of the derivatives of w(l, i, j) with respect to all the individual input
+        #divergences divided by the total no. of inputs.
+        #you'll see that vectorization (A of the form (NxCin) and dLdZ_transpose(CoutxN)) makes the calculation
+        #really easy
         #to find dLdW again if you hand calculate you'll see that dLdZ_transpose(CoutxN) @ A(NxCin)
-        # gives dLdW(CoutxCin), in this this the ij entry of dLdW contains the sum of derivatives
-        # wrt the ij weight of W(CoutxCin) for the whole batch, thus each entry is a sum of batch_size values
-        # thus, to find the average gradient, we just need to divide each element of
-        # dLdW by the batch size
+        # gives dLdW(CoutxCin), in this matrix, the ij entry is the average of the derivatives of the ij weight
+        # with respect to each individual input. and, really, with just one matrix multiplication we are done.
+        # In this the ij entry of dLdW contains the sum of derivatives (verify) of wij with respect to all the
+        # individual divergences and as for the average, the no. by which we divide (mini-batch size) is carried over
+        # as a result  of backpropagating the loss
+        # you see, dLdZ/dLdA is of the form NxCout and divergence wrt a given z(l, i) differs for every input
+        # and that is why we keep a separate row for each input
+        # but look at how convenient it is for calculating dLdW and dLdb
         self.dLdW= dLdZ.T @ self.A
 
-        #now just like each value of dLdW was the sum of gradient,
-        #dLdb will also be a single vector, where ith entry is the sum gradient of loss
-        #with respect to the bias of ith output neuron, the shape of the vector will be
-        # we can then divide dLdb by the batch size to obtain the average batch gradient
-        #which will be used for gradient descent
+        #now just like dLdW
+        #dLdb will also be a single vector, where ith entry is the average
+        # bias wrt the ith input of the mini-batch
+
         self.dLdb= np.sum(dLdZ, axis=0).reshape(-1, 1) # Coutx1, to match the dimensions of self.b
 
         return self.dLdA

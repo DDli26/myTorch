@@ -1,6 +1,19 @@
 import numpy as np
+from activation import Softmax
 
+"""
+            if you remember from mlp.py the models that we defined only has normal layers
+            the final layer where loss is calculated was not defined.
+            now the ouputs of the mlps gets passed through a loss layer
+            and backward pass also starts from the loss layer
+            also notice that when working with CrossEntropyLoss, the softmax activation
+            is included inside the forward pass. This makes our task much more convenient.
+            In the sense that the backward passes of the loss layers are coded so that they
+            return the derivatives wrt the ouputs of the mlps, that is the output before softmax
+            activation. 
+            As for MSE, no activation is necessary
 
+    """
 class MSELoss:
 
     def forward(self, A, Y):
@@ -15,26 +28,47 @@ class MSELoss:
         #where N is batch size
         self.A=A #we'll need this for the backward pass
         self.Y=Y
+        self.N= A.shape[0]
+        self.C= A.shape[1]
+
+        #see the output of the network can be C regression terms, that is why we have
+        # A and Y of dimension NxC, where N is the batch size
+        # so to find the divergence for an individual input, we have to sum the square
+        # differences of C terms (that's the l2 norm of the vector) and divide by C
+        # loss is obviously the average of the divergences over
+        # all the inputs, so we divide all the divergences by N
         square_error= np.square(self.A - self.Y)
-        self.L= np.mean(square_error, axis=1)  #MSE
+        divergences= np.sum(square_error, axis=1) / self.C
+        self.L= np.sum(divergences, axis=0)/self.N
 
         return self.L
 
 
     def backward(self):
-        pass
+        # we must return the derivative wrt the final output of the network
+        # since the final output for a batch is NxC
+        # the derivative will also be of the same dimension
+        # the denominator is carried over in backprop, ensuring that the derivatives
+        # for the weights and biases are also the average derivatives over all input of the batch
+        dLdA =  ( 2 * (self.A - self.Y) ) / (self.N * self.C)
+        return dLdA
 
 
-# a= np.random.randint(1,5, size=(2,2))
-# y=np.random.randint(1,5, size=(2,2))
-# print("a:\n",a,"\n\nY:\n", y)
-# print("\nsquare_error\n")
-# print(np.square(a - y))
-# print("\nMSE\n")
-# print( np.mean(np.square(a - y), axis=1).reshape())
+
 
 class CrossEntropyLoss:
+    """
+        if you remember from mlp.py the models that we defined only has normal layers
+        the final layer where loss is calculated was not defined.
+        now the ouputs of the mlps gets passed through a loss layer
+        and backward pass also starts from the loss layer
+        also notice that when working with CrossEntropyLoss, the softmax activation
+        is included inside the forward pass. This makes our task much more convenient.
+        In the sense that the backward passes of the loss layers are coded so that they
+        return the derivatives wrt the ouputs of the mlps, that is the output before softmax
+        activation
 
+    """
     def forward(self, A, Y):
         """
         Calculate the Cross Entropy Loss
@@ -45,24 +79,18 @@ class CrossEntropyLoss:
         Refer the the writeup to determine the shapes of all the variables.
         Use dtype ='f' whenever initializing with np.zeros()
         """
-        self.A = A
-        self.Y = Y
-        self.N = A.shape[0]
-        self.C = A.shape[1]
-
-        Ones_C = np.ones((self.C, 1))
-        Ones_N = np.ones((self.N, 1))
-
-        self.softmax = np.exp(A) / np.sum(np.exp(A), axis=1).reshape(-1, 1)
-
-        crossentropy = (-Y * np.log(self.softmax)) @ Ones_C
-        sum_crossentropy = Ones_N.T @ crossentropy
-        L = sum_crossentropy / self.N
-
-        return L
+        self.Y=Y
+        self.N= A.shape[0]
+        self.C= A.shape[1]
+        #softmax activation
+        self.A= Softmax().forward(A)
+        self.pred_probs_of_correct_out= np.sum((self.A * self.Y), axis=1) # this is a 1-d array (dim of N) of  probabilities for the correct label
+        #loss is the average of the divergences
+        divergences= -np.log(self.pred_probs_of_correct_out)
+        self.L = np.sum(divergences)/self.N
+        return self.L
 
     def backward(self):
+        pass
 
-        dLdA = (self.softmax - self.Y) / self.N
 
-        return dLdA
