@@ -15,15 +15,19 @@ class Upsample1d:
             Z (np.array): (batch_size, in_channels, output_width)
         """
         # implement Z
+        #out_width = upsampling_factor * (in_width - 1)+1
+        #input of size 5 will become of size 9 with a factor of 2, input size 6 will become 11
+        Z=np.zeros(shape=(A.shape[0], A.shape[1], self.upsampling_factor * (A.shape[2]-1)+1))
 
-        N, C, Win = A.shape
-        Wout = self.upsampling_factor * (Win - 1) + 1
-        Z = np.zeros((N, C, Wout))
-
-        for i in range(Win):
-            Z[:, :, i * self.upsampling_factor] = A[:, :, i]
+        input_idx=0
+        output_idx=0
+        while output_idx<Z.shape[2]:
+            Z[:, :, output_idx] = A[:, :, input_idx]
+            input_idx+=1
+            output_idx+=self.upsampling_factor
 
         return Z
+
 
     def backward(self, dLdZ):
         """
@@ -32,15 +36,25 @@ class Upsample1d:
         Return:
             dLdA (np.array): (batch_size, in_channels, input_width)
         """
-        N, C, Wout = dLdZ.shape
-        Win = (Wout - 1) // self.upsampling_factor + 1
-        dLdA = np.zeros((N, C, Win))
-
-        for i in range(Win):
-            dLdA[:, :, i] = dLdZ[:, :, i * self.upsampling_factor]
+        """
+            backward pass of upsampling is simply downsampling dLdZ.
+            we do it for the entire batch and all channels of each input of the batch
+            out_width = upsampling_factor * (in_width - 1)+1
+        """
+        input_width= (dLdZ.shape[2]-1) // self.upsampling_factor +1
+        dLdA=np.zeros(shape=(dLdZ.shape[0], dLdZ.shape[1], input_width))
+        output_idx=0
+        for input_idx in range(input_width):
+            dLdA[:, :, input_idx]= dLdZ[:, :, output_idx]
+            output_idx+=self.upsampling_factor
 
         return dLdA
 
+#testing forward
+# A= np.array([1,0,-1,2,1]).reshape(1,1,5)
+#
+# up_layer=Upsample1d(2)
+# print(up_layer.forward(A))
 
 class Downsample1d:
 
