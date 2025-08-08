@@ -32,7 +32,8 @@ class SGD:
 
 
     def step(self):
-
+        
+        #this code does not account for the fact that some layers don't have any parameters
        if self.mu==0: #no momentum
 
             #update parameters for each layer

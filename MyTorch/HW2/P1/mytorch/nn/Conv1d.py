@@ -39,17 +39,19 @@ class Conv1d_stride1:
         Return:
             Z (np.array): (batch_size, out_channels, output_size)
         """
-        self.A = A
-        batch_size, in_channels, input_size = A.shape
-        output_size = input_size - self.kernel_size + 1
-
-        Z = np.zeros((batch_size, self.out_channels, output_size))
-
-        for i in range(output_size):
-            patch = A[:, :, i : i + self.kernel_size]
-            Z[:, :, i] = np.tensordot(patch, self.W, axes=([1, 2], [1, 2]))
-
-        Z += self.b.reshape(1, -1, 1)
+        self.A=A
+        batches, in_channels, in_size=A.shape
+        out_width=in_size-self.kernel_size+1
+        Z=np.zeros(shape=(batches, self.out_channels, out_width))
+        for i in range(out_width):
+            # W.shape: (out_channels, in_channels, kernel_size)
+            #b: batch, c:in_channels, k: kernel_size, o: out_channels
+            #verify that this einsum will output the ith index output needed
+            # for each batch and for each output_channel
+            Z[:,:,i]=np.einsum(
+                "bck, ock->bo ",
+                A[:,:,i:i+self.kernel_size], self.W #we ensure that width of A is the same as the kernel
+            ) + self.b #broadcasting will take care of bias
 
         return Z
 
@@ -60,27 +62,34 @@ class Conv1d_stride1:
         Return:
             dLdA (np.array): (batch_size, in_channels, input_size)
         """
-        batch_size, out_channels, output_size = dLdZ.shape
-        self.dLdb = np.sum(dLdZ, axis=(0, 2))
-        dLdA = np.zeros(self.A.shape)
 
-        for i in range(self.kernel_size):
-            patch = self.A[:, :, i : i + output_size]
+        # self.dLdW =  # TODO
+        # self.dLdb =  # TODO
 
-            self.dLdW[:, :, i] = np.tensordot(dLdZ, patch, axes=([0, 2], [0, 2]))
+        #dLdA: for a single channel of a single input is a convolution
+        #between padded dLdZ of a single output channel and flipped filter of that channel
+        #do the appropriate padding on each output channels of each batch
+        padded_dLdZ= np.pad(dLdZ, ((0,0), (0,0), (self.kernel_size-1,self.kernel_size-1)))
+        flipped_W=np.flip(self.W, axis=2)
+        dLdA= np.zeros_like(self.A)
+        for i in range(padded_dLdZ.shape[2]-self.kernel_size+1):
+            dLdA[:, :, i]= np.einsum(
+                #wait, we aren't accounting for the fact that one input channel affects all output channels
+                "",
+                padded_dLdZ[:,:,i+self.kernel_size], flipped_W
+            )
 
-        dLdZ_padded = np.pad(
-            dLdZ, ((0, 0), (0, 0), (self.kernel_size - 1, self.kernel_size - 1))
-        )
-        flipped_W = np.flip(self.W, axis=2)
+        return None
 
-        for i in range(self.A.shape[2]):
-            patch = dLdZ_padded[:, :, i : i + self.kernel_size]
-            dLdA[:, :, i] = np.tensordot(patch, flipped_W, axes=([1, 2], [0, 2]))
-
-        return dLdA
-
-
+# z=np.random.randint(1,10, size=(3,3,5))
+# #if kernel size if k, we'll have to pad each output_size with k-1
+# print(z)
+# padded_z= np.pad(z,((0,0), (0,0), (2,2)) )
+# print(padded_z)
+W= np.random.randint(1,5, size=(2,3,6))
+print(f"W: {W}")
+flipped_W= np.flip(W, axis=2)
+print(f"\n\nflipped_W: {flipped_W}")
 class Conv1d:
     def __init__(
         self,
