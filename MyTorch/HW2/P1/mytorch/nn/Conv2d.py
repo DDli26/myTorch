@@ -3,6 +3,12 @@ from resampling import *
 
 
 class Conv2d_stride1:
+    """
+    here we'll just extend what we did in Conv1d.py
+    the einsum's used here are just an extension of the ones in Conv1d.py to 2-D channels
+    I just blindly extended the string in the einsum and it worked. The important thing is
+    that we understand how the forward pass and backward pass work
+    """
     def __init__(
         self,
         in_channels,
@@ -41,23 +47,17 @@ class Conv2d_stride1:
             Z (np.array): (batch_size, out_channels, output_height, output_width)
         """
         self.A = A
-        batch_size, in_channels, input_height, input_width = A.shape
+        batches, in_channels, in_height, in_width = A.shape
+        out_width = in_width - self.kernel_size + 1
+        out_height=in_height-self.kernel_size +1
+        Z = np.zeros(shape=(batches, self.out_channels, out_height,out_width))
 
-        self.output_height = input_height - self.kernel_size + 1
-        self.output_width = input_width - self.kernel_size + 1
-
-        Z = np.zeros(
-            (batch_size, self.out_channels, self.output_height, self.output_width)
-        )
-
-        for i in range(self.output_height):
-            for j in range(self.output_width):
-                section = A[:, :, i : i + self.kernel_size, j : j + self.kernel_size]
-                Z[:, :, i, j] = (
-                    np.tensordot(section, self.W, axes=([1, 2, 3], [1, 2, 3])) + self.b
-                )
-
-        Z = Z + self.b.reshape(1, -1, 1, 1)
+        for i in range(out_height):
+            for j in range(out_width):
+                Z[:, :, i, j] = np.einsum(
+                    "bchw, ochw->bo ",
+                    A[:, :, i:i + self.kernel_size, j:j+self.kernel_size], self.W  # we ensure that width of A is the same as the kernel
+                ) + self.b  # broadcasting will take care of bias, turning the row vector into a matrix
 
         return Z
 
@@ -70,40 +70,42 @@ class Conv2d_stride1:
         """
 
         batch_size, in_channels, input_height, input_width = self.A.shape
+        self.dLdW = np.zeros_like(self.W)
 
-        self.dLdb = np.sum(dLdZ, axis=(0, 2, 3))
-        dLdA = np.zeros(self.A.shape)
+        conv_filter = dLdZ
+        filter_height = dLdZ.shape[2]
+        filter_width=dLdZ.shape[3]
+        for i in range(input_height - filter_height + 1):
+            for j in range(input_width-filter_width+1):
+                self.dLdW[:, :, i,j] = np.einsum(
+                    "bchw, bohw->oc",
 
-        for i in range(self.kernel_size):
-            for j in range(self.kernel_size):
-                section = self.A[
-                    :, :, i : i + self.output_height, j : j + self.output_width
-                ]
-                self.dLdW[:, :, i, j] = np.tensordot(
-                    dLdZ, section, axes=([0, 2, 3], [0, 2, 3])
+                    self.A[:, :, i:i + filter_height, j: j + filter_width], conv_filter
                 )
 
-        dLdZ_padded = np.pad(
-            dLdZ,
-            (
-                (0, 0),
-                (0, 0),
-                (self.kernel_size - 1, self.kernel_size - 1),
-                (self.kernel_size - 1, self.kernel_size - 1),
-            ),
-        )
-        W_flipped = np.flip(self.W, (3, 2))
 
-        for i in range(self.A.shape[2]):
-            for j in range(self.A.shape[3]):
-                section = dLdZ_padded[
-                    :, :, i : i + self.kernel_size, j : j + self.kernel_size
-                ]
-                dLdA[:, :, i, j] = np.tensordot(
-                    section, W_flipped, axes=([1, 2, 3], [0, 2, 3])
+        self.dLdb = np.einsum("bohw->o", dLdZ)
+
+
+        padded_dLdZ = np.pad(dLdZ, ((0, 0), (0, 0),
+                                    (self.kernel_size - 1, self.kernel_size - 1), #along height of an output_map
+                                    (self.kernel_size-1, self.kernel_size-1)) #along width of the map
+                             )
+        #flipped W is a 180 degree rotation of the W matrix, since each W channel is now 2D
+        flipped_W = np.flip(self.W, axis=2)
+        flipped_W=np.flip(flipped_W, axis=3) #flipping across height and then width, or vice versa gives the 180 degree rotatin
+        dLdA = np.zeros_like(self.A)
+
+        for i in range(padded_dLdZ.shape[2] - self.kernel_size + 1):
+            for j in range(padded_dLdZ.shape[3]-self.kernel_size+1):
+                dLdA[:, :, i, j] = np.einsum(
+                    # b: batch, o:out_channels, k:kernel_size, c: in_channels
+                    "bohw, ochw->bc",
+                    padded_dLdZ[:, :, i:i + self.kernel_size, j:j+self.kernel_size], flipped_W
                 )
 
         return dLdA
+
 
 
 class Conv2d:
@@ -122,10 +124,9 @@ class Conv2d:
         self.pad = padding
 
         # Initialize Conv2d() and Downsample2d() isntance
-        self.conv2d_stride1 = Conv2d_stride1(
-            in_channels, out_channels, kernel_size, weight_init_fn, bias_init_fn
-        )
-        self.downsample2d = Downsample2d(stride)
+        self.conv2d_stride1 = Conv2d_stride1(in_channels, out_channels, kernel_size,
+                                             weight_init_fn, bias_init_fn)
+        self.downsample2d = Downsample2d(downsampling_factor=stride)
 
     def forward(self, A):
         """
@@ -136,15 +137,11 @@ class Conv2d:
         """
 
         # Pad the input appropriately using np.pad() function
-        padded_A = np.pad(
-            A, ((0, 0), (0, 0), (self.pad, self.pad), (self.pad, self.pad))
-        )
-
-        # Call Conv2d_stride1
-        stride1_out = self.conv2d_stride1.forward(padded_A)
-
-        # downsample
-        Z = self.downsample2d.forward(stride1_out)
+        A= np.pad(A, ((0,0), (0,0), (self.pad, self.pad), (self.pad, self.pad)))
+        #again, just like we did in Conv1d, convolving with a stride is same as
+        #convolving and then downsampling
+        Z=self.conv2d_stride1.forward(A)
+        Z= self.downsample2d.forward(Z)
 
         return Z
 
@@ -157,13 +154,12 @@ class Conv2d:
         """
 
         # Call downsample1d backward
-        dLdZ = self.downsample2d.backward(dLdZ)
+        dLdA=self.downsample2d.backward(dLdZ)
 
         # Call Conv1d_stride1 backward
-        dLdA = self.conv2d_stride1.backward(dLdZ)
+        dLdA=self.conv2d_stride1.backward(dLdA)
 
         # Unpad the gradient
-        if self.pad != 0:
-            dLdA = dLdA[:, :, self.pad : -self.pad, self.pad : -self.pad]
-
+        if self.pad!=0:
+            dLdA= dLdA[:,:, self.pad:-self.pad, self.pad: -self.pad]
         return dLdA

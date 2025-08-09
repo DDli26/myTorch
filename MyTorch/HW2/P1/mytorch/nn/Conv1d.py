@@ -51,7 +51,7 @@ class Conv1d_stride1:
             Z[:,:,i]=np.einsum(
                 "bck, ock->bo ",
                 A[:,:,i:i+self.kernel_size], self.W #we ensure that width of A is the same as the kernel
-            ) + self.b #broadcasting will take care of bias
+            ) + self.b #broadcasting will take care of bias, turning the row vector into a matrix
 
         return Z
 
@@ -62,35 +62,68 @@ class Conv1d_stride1:
         Return:
             dLdA (np.array): (batch_size, in_channels, input_size)
         """
+        #remember, derivative wrt a given parameter is the average of derivatives for the batch_size
+        #the division by the batch size is carried over in the backward pass from dLdZ, we have to take care of the
+        #summations
+        self.dLdW =  np.zeros_like(self.W) # shape: out_channels x in_channels x kernel_size
+        #dLdW wrt ith channel of  is convolution between ith input channel and corrsponding output channel
+        #if done over the batch, derivative wrt ith channel is summations of the results of individual convolutions
+        conv_filter=dLdZ
+        filter_size=dLdZ.shape[2]
+        for i in range(self.A.shape[2]-filter_size+1):
+            #b:batches, c:in_channels, k: filter_size as computed above, o:out_channels
+            self.dLdW[:,:,i]=np.einsum( #derivate of loss wrt ith entry of all channels of all filters
+                "bck, bok->oc", #an easy way to understand is to fix o and c to some index, so o and c mean oth filters cth channel
+                                         #so ith entry of oth filter's cth channel is calculated by placing dLdZ[b, o, :] on self.A[b,c] and then
+                                         #performing elementwise multiplication and adding the result along all batches since
+                                         # the addition along all batches accounts for the fact that derivative wrt a given parameter
+                                        # is an average of the derivatives wrt individual inputs
+                self.A[:,:,i:i+filter_size], dLdZ
+            )
 
-        # self.dLdW =  # TODO
-        # self.dLdb =  # TODO
+        #dLdb
+        #for a single input, dLdb wrt bias of jth filter  is just the sum of the entries of jth output_channel
+        #to do this for the entire batch, we'd have to sum the bias for jth filter over all batches
+        #and then divide by #batches. well division by #batches is carried over in the backward pass
+        #through loss layer, so we just have to take care of the summation
+        self.dLdb =  np.einsum("bok->o", dLdZ)
 
-        #dLdA: for a single channel of a single input is a convolution
-        #between padded dLdZ of a single output channel and flipped filter of that channel
-        #do the appropriate padding on each output channels of each batch
+        #finding dLdA:
+        #firstly, each channel of each input, affects all outputs
+        #derivative wrt jth channel of each input is a convolutions between the flipped
+        # W's corresponding channel, that is, jth channel of all filters: shape(out_channels, j, kernel_size);
+        # and padded dLdZ
+        #we have to do this for every input channel of every batch
+        #the for loop below moves the filter over dLdZ and einsum gives us the ith entry of
+        #all channels of dLdA for all batches, thus computing dLdA in one pass over dLdZ
         padded_dLdZ= np.pad(dLdZ, ((0,0), (0,0), (self.kernel_size-1,self.kernel_size-1)))
         flipped_W=np.flip(self.W, axis=2)
         dLdA= np.zeros_like(self.A)
+
+
         for i in range(padded_dLdZ.shape[2]-self.kernel_size+1):
             dLdA[:, :, i]= np.einsum(
-                #wait, we aren't accounting for the fact that one input channel affects all output channels
-                "",
-                padded_dLdZ[:,:,i+self.kernel_size], flipped_W
+                #b: batch, o:out_channels, k:kernel_size, c: in_channels
+                "bok, ock->bc",
+                padded_dLdZ[:,:,i:i+self.kernel_size], flipped_W
             )
 
-        return None
+        return dLdA
 
 # z=np.random.randint(1,10, size=(3,3,5))
 # #if kernel size if k, we'll have to pad each output_size with k-1
 # print(z)
 # padded_z= np.pad(z,((0,0), (0,0), (2,2)) )
 # print(padded_z)
-W= np.random.randint(1,5, size=(2,3,6))
-print(f"W: {W}")
-flipped_W= np.flip(W, axis=2)
-print(f"\n\nflipped_W: {flipped_W}")
+# W= np.random.randint(1,5, size=(2,3,6))
+# print(f"W: {W}")
+# flipped_W= np.flip(W, axis=2)
+# print(f"\n\nflipped_W: {flipped_W}")
 class Conv1d:
+    """
+    to implement a Conv1d with a given stride, what we can do is first perform a Conv1d with stride 1,
+    as seen in Conv1d_stride1d and them perform downsampling with a factor of the given stride
+    """
     def __init__(
         self,
         in_channels,
@@ -106,11 +139,15 @@ class Conv1d:
         self.stride = stride
         self.pad = padding
 
-        # Initialize Conv1d() and Downsample1d() isntance
-        self.conv1d_stride1 = Conv1d_stride1(
-            in_channels, out_channels, kernel_size, weight_init_fn, bias_init_fn
-        )
-        self.downsample1d = Downsample1d(stride)
+        # Initialize Conv1d() and Downsample1d() instance
+
+        self.conv1d_stride1 =  Conv1d_stride1(in_channels,
+                                              out_channels,
+                                              kernel_size,
+                                              weight_init_fn,
+                                              bias_init_fn)
+        self.downsample1d =  Downsample1d(downsampling_factor=self.stride)
+
 
     def forward(self, A):
         """
@@ -120,13 +157,15 @@ class Conv1d:
             Z (np.array): (batch_size, out_channels, output_size)
         """
 
-        A = np.pad(A, ((0, 0), (0, 0), (self.pad, self.pad)))
 
-        # Call Conv1d_stride1
-        stride = self.conv1d_stride1.forward(A)
+        #firstly we might wanna perform padding on A, as needed
+        A=np.pad(A,((0,0), (0,0), (self.pad, self.pad)))
+        # Call Conv1d_stride1 to obtain the colvolution output
+        Z=self.conv1d_stride1.forward(A)
 
-        # downsample
-        Z = self.downsample1d.forward(stride)
+        # downsample, this performs the work of striding
+        #so the final output is what we would get by performing convolution with a give stride
+        Z=self.downsample1d.forward(Z)
 
         return Z
 
@@ -137,14 +176,19 @@ class Conv1d:
         Return:
             dLdA (np.array): (batch_size, in_channels, input_size)
         """
+        #so backward pass is simply performing backward pass via the downsampled layer
+        #and then via the convolution layer
+        #now the dLdA we get this way will be be of the same dimesnions as the padded A
+        #which is not the original dimension of A
+        #so we must remove the padding for the computed dLdA
         # Call downsample1d backward
-        dLdZ = self.downsample1d.backward(dLdZ)
+        dLdA= self.downsample1d.backward(dLdZ)
 
         # Call Conv1d_stride1 backward
-        dLdA = self.conv1d_stride1.backward(dLdZ)
+        dLdA= self.conv1d_stride1.backward(dLdA)
 
         # Remove padding
-        if self.pad != 0:
-            dLdA = dLdA[:, :, self.pad : -self.pad]
+        if self.pad!=0:
+            dLdA= dLdA[:, :, self.pad:-self.pad]
 
         return dLdA
