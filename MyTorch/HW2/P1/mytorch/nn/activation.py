@@ -58,8 +58,8 @@ class Tanh:
         """
         again, element wise tanh
         """
-        self.A = np.exp(Z)-np.exp(-Z)
-        self.A= self.A/ (np.exp(Z) + np.exp(-Z))
+        # self.A = np.exp(Z)-np.exp(-Z)
+        self.A= np.tanh(Z)
         return self.A
 
     def backward(self, dLdA):

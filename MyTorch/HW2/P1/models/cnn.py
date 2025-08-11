@@ -72,34 +72,27 @@ class CNN(object):
         # self.convolutional_layers (list Conv1d) = []
         # self.flatten              (Flatten)     = Flatten()
         # self.linear_layer         (Linear)      = Linear(???)
+        self.convolutional_layers = [
+            Conv1d(in_channels=num_input_channels, out_channels=num_channels[0], kernel_size=kernel_sizes[0], stride=1),
+            Conv1d(56, 28, 6, 2),
+            Conv1d(28, 14, 2, 2)
+            ]
+        self.tanh= Tanh()
+        self.relu= ReLU()
+        self.sigmoid = Sigmoid()
+        self.flatten = Flatten()
+        self.linear_layer = Linear(420, 10)
         # <---------------------
 
-        self.convolutional_layers = []
-        self.flatten = Flatten()
 
-        for i in range(self.nlayers):
-            self.convolutional_layers.append(
-                Conv1d(
-                    in_channels=num_input_channels,
-                    out_channels=num_channels[i],
-                    kernel_size=kernel_sizes[i],
-                    stride=strides[i],
-                    weight_init_fn=conv_weight_init_fn,
-                    bias_init_fn=bias_init_fn,
-                )
-            )
-            num_input_channels = num_channels[i]
+        # Don’t change this -->
+        out_features, in_features = self.linear_layer.W.shape
+        if linear_weight_init_fn is not None:
+            self.linear_layer.W = linear_weight_init_fn(out_features, in_features)
+        if bias_init_fn is not None:
+            self.linear_layer.b = bias_init_fn(out_features)
+        # <---------------------
 
-        output_width = input_width
-
-        for i in range(self.nlayers):
-            output_width = (output_width - kernel_sizes[i]) // strides[i] + 1
-
-        self.linear_layer = Linear(num_channels[-1] * output_width, num_linear_neurons)
-        self.linear_layer.W = linear_weight_init_fn(
-            num_linear_neurons, num_channels[-1] * output_width
-        )
-        self.linear_layer.b = bias_init_fn(num_linear_neurons)
 
     def forward(self, A):
         """
@@ -111,10 +104,14 @@ class CNN(object):
 
         # Your code goes here -->
         # Iterate through each layer
+        A=self.convolutional_layers[0].forward(A)
+        A= self.tanh.forward(A)
+        A=self.convolutional_layers[1].forward(A)
+        A=self.relu.forward(A)
+        A=self.convolutional_layers[2].forward(A)
+        A=self.sigmoid.forward(A)
         # <---------------------
-        for i in range(self.nlayers):
-            A = self.convolutional_layers[i].forward(A)
-            A = self.activations[i].forward(A)
+
 
         # Save output (necessary for error and loss)
         self.Z = A
@@ -137,13 +134,16 @@ class CNN(object):
 
         # Your code goes here -->
         # Iterate through each layer in reverse order
+        grad=self.linear_layer.backward(grad)
+        grad=self.flatten.backward(grad)
+        grad=self.sigmoid.backward(grad)
+        grad=self.convolutional_layers[2].backward(grad)
+        grad=self.relu.backward(grad)
+        grad=self.convolutional_layers[1].backward(grad)
+        grad=self.tanh.backward(grad)
+        grad=self.convolutional_layers[0].backward(grad)
         # <---------------------
-        grad = self.linear_layer.backward(grad)
-        grad = self.flatten.backward(grad)
 
-        for i in range(self.nlayers - 1, -1, -1):
-            grad = self.activations[i].backward(grad)
-            grad = self.convolutional_layers[i].backward(grad)
 
         return grad
 
