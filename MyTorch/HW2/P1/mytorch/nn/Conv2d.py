@@ -48,6 +48,8 @@ class Conv2d_stride1:
         """
         self.A = A
         batches, in_channels, in_height, in_width = A.shape
+        assert in_channels == self.in_channels
+
         out_width = in_width - self.kernel_size + 1
         out_height=in_height-self.kernel_size +1
         Z = np.zeros(shape=(batches, self.out_channels, out_height,out_width))

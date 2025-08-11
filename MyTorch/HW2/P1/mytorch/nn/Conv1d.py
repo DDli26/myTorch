@@ -41,6 +41,7 @@ class Conv1d_stride1:
         """
         self.A=A
         batches, in_channels, in_size=A.shape
+        assert in_channels == self.in_channels
         out_width=in_size-self.kernel_size+1
         Z=np.zeros(shape=(batches, self.out_channels, out_width))
         for i in range(out_width):
