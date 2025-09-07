@@ -3,7 +3,11 @@ from mytorch.nn.activation import *
 
 
 class RNNCell(object):
-    """RNN Cell class."""
+    """RNN Cell class. Refer to the handout more detailed meaning of the variables
+       For this assignment, my focus is not extensive comments but rather, having
+       understood the concepts in HW1 and HW2, just getting over with this one
+       quickly
+    """
 
     def __init__(self, input_size, hidden_size):
 
@@ -65,22 +69,17 @@ class RNNCell(object):
             hidden state at the current time step and current layer
         """
 
-        """
-        ht = tanh(Wihxt + bih + Whhht−1 + bhh) 
-        """
+        #in class and if you think about it, there is only just one bias vector
+        #ther aren't two separate ones, anyways
 
-        h_t = None
-
-        out = self.W_ih @ x.T + self.b_ih[:, None]
-        out += self.W_hh @ h_prev_t.T + self.b_hh[:, None]
-
-        h_t = self.activation.forward(out.T)
-
+        hidden_preactiv = (h_prev_t @ self.W_hh.T + self.b_hh) + (x @ self.W_ih.T + self.b_ih)
+        h_t = np.tanh(hidden_preactiv)
         return h_t
 
     def backward(self, delta, h_t, h_prev_l, h_prev_t):
         """
         RNN Cell backward (single time step).
+
 
         Input (see writeup for explanation)
         -----
@@ -92,9 +91,11 @@ class RNNCell(object):
 
         h_prev_l: (batch_size, input_size)
                     Hidden state at the current time step and previous layer
+                    i.e, the input to this rnn cell
 
         h_prev_t: (batch_size, hidden_size)
                     Hidden state at previous time step and current layer
+
 
         Returns
         -------
@@ -106,15 +107,14 @@ class RNNCell(object):
 
         """
         batch_size = delta.shape[0]
-     
-        dz = self.activation.backward(delta, h_t)
-
-        self.dW_ih += dz.T @ h_prev_l / batch_size
+        dz = delta * (1 - np.square(h_t)) #derivative wrt preactivation
+        # 1) Compute the averaged gradients of the weights and biases
+        self.dW_ih += dz.T @ h_prev_l /batch_size
         self.dW_hh += dz.T @ h_prev_t / batch_size
-        self.db_ih += dz.sum(axis=0) / batch_size
-        self.db_hh += dz.sum(axis=0) / batch_size
-
-        dx = dz @ self.W_ih
-        dh_prev_t = dz @ self.W_hh
-
+        self.db_ih +=  np.sum(dz, axis=0) / batch_size
+        self.db_hh += np.sum(dz, axis=0) / batch_size
+        # # 2) Compute dx, dh_prev_t
+        dx =   dz @ self.W_ih
+        dh_prev_t =   dz @ self.W_hh
         return dx, dh_prev_t
+

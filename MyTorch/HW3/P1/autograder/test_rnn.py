@@ -212,6 +212,7 @@ class RNNTest(Test):
         my_dh = my_rnn_model.backward(delta)
 
         # Verify derivative w.r.t. each network parameters
+
         assert np.allclose(
             my_dh, dh.detach().numpy(), rtol=1e-04
         ), "wrong value for dh in rnn classifier backward"

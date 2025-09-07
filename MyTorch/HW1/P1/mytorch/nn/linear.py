@@ -80,7 +80,11 @@ class Linear:
 
         #coming to dLdW and dLdb, now we know that the derivative of loss(scalar) with respect to a given parameter
         #w(l,i,j) or b(l,k) is a sum of the derivatives of w(l, i, j) with respect to all the individual input
-        #divergences divided by the total no. of inputs.
+        #divergences divided by the total no. of inputs. divison by #inputs bcz loss = (sum of divigences) / #inputs
+        # so the division term is always there.
+        # to put it simply, derivative of loss wrt a weight is sum of derivative of each divergence wrt that weight
+        #divided by the #inputs. this is bcz that a weight affects all the divergences which inturn affect the loss.
+        #i know i'm oversimplying this, bcz we are just taking a derivative and that's it. but this will repeat over and over
         #you'll see that vectorization (A of the form (NxCin) and dLdZ_transpose(CoutxN)) makes the calculation
         #really easy
         #to find dLdW again if you hand calculate you'll see that dLdZ_transpose(CoutxN) @ A(NxCin)
