@@ -84,44 +84,28 @@ class GRUCell(object):
             hidden state at current time-step.
 
         """
+        self.h_prev_t = h_prev_t
         self.x = x
         self.hidden = h_prev_t
-
-        assert self.x.shape == (self.d,)
-        assert self.hidden.shape == (self.h,)
-
-        r = (
-            np.dot(self.Wrx, self.x)
-            + self.brx
-            + np.dot(self.Wrh, self.hidden)
-            + self.brh
+        self.r_activ = Sigmoid()
+        self.r = self.r_activ.forward(
+                 self.Wrx @ x + self.brx +
+                 self.Wrh @ h_prev_t + self.brh
         )
-        self.r = self.r_act.forward(r)
-
-        z = (
-            np.dot(self.Wzx, self.x)
-            + self.bzx
-            + np.dot(self.Wzh, self.hidden)
-            + self.bzh
+        self.z_activ = Sigmoid()
+        self.z = self.z_activ.forward(
+                self.Wzx @ x + self.bzx +
+                self.Wzh @ h_prev_t + self.bzh
         )
-        self.z = self.z_act.forward(z)
-
-        n = (
-            np.dot(self.Wnx, self.x)
-            + self.bnx
-            + self.r * (np.dot(self.Wnh, self.hidden) + self.bnh)
+        self.n_activ = Tanh()
+        self.n = self.n_activ.forward(
+                self.Wnx @ x + self.bnx +
+                self.r * (self.Wnh @ h_prev_t + self.bnh)
         )
-        self.n = self.h_act.forward(n)
 
-        assert self.r.shape == (self.h,)
-        assert self.z.shape == (self.h,)
-        assert self.n.shape == (self.h,)
-
-        h_t = (1 - self.z) * self.n + self.z * self.hidden
-
-        assert h_t.shape == (self.h,)
-
+        h_t =  (1 - self.z) * self.n + self.z * h_prev_t
         return h_t
+
 
     def backward(self, delta):
         """GRU cell backward.
@@ -145,56 +129,69 @@ class GRUCell(object):
             derivative of the loss wrt the input hidden h.
 
         """
-        dx = np.zeros((self.d,))
-        dh_prev_t = np.zeros((self.h,))
+        #eq1 from handout
+        #a
+        dh_dz = self.h_prev_t - self.n
+        dldz = delta * (dh_dz)
 
-        # From equation 1
-        dh_prev_t += delta * self.z
-        dn = delta * (1 - self.z)
-        dz = delta * (self.hidden - self.n)
+        #b
+        dldn = delta * (1 - self.z)
 
-        # Backprop through tanh
-        dn_pre_act = self.h_act.backward(dn)
+        #eq2 from handout
+        #a
+        dl_dn_preactiv = self.n_activ.backward(dldn) # dimension: hout
+        self.dWnx = dl_dn_preactiv.reshape(-1, 1) @ self.x.reshape(1, -1)
 
-        # From equation 2
-        self.dWnx = np.outer(dn_pre_act, self.x)
-        self.dbnx = dn_pre_act
+        #b
+        self.dbnx = dl_dn_preactiv
 
-        d_inner = dn_pre_act * self.r
-        self.dWnh = np.outer(d_inner, self.hidden)
-        self.dbnh = d_inner
+        #c: in case of error, double check this
+        dl_drt = dl_dn_preactiv * (self.Wnh @ self.h_prev_t + self.bnh)
 
-        dr_from_n = dn_pre_act * (np.dot(self.Wnh, self.hidden) + self.bnh)
-        dh_prev_t += np.dot(self.Wnh.T, d_inner)
+        #d
+        self.dWnh = dl_dn_preactiv.reshape(-1, 1) * np.outer(self.r, self.h_prev_t)
+        #e
+        self.dbnh = dl_dn_preactiv * self.r
 
-        # Backprop through sigmoid
-        dz_pre_act = self.z_act.backward(dz)
+        # eq3
+        #a : similar to the code for self.dWnx
+        dl_dz_preactiv = self.z_activ.backward(dldz)  # dimension: hout
+        self.dWzx = np.outer(dl_dz_preactiv, self.x)
 
-        # From equation 3
-        self.dWzx = np.outer(dz_pre_act, self.x)
-        self.dbzx = dz_pre_act
-        self.dWzh = np.outer(dz_pre_act, self.hidden)
-        self.dbzh = dz_pre_act
+        #b
+        self.dbzx = dl_dz_preactiv
 
-        dx += np.dot(self.Wzx.T, dz_pre_act)
-        dh_prev_t += np.dot(self.Wzh.T, dz_pre_act)
+        #c
+        self.dWzh = np.outer(dl_dz_preactiv, self.h_prev_t)
 
-        # Backprop through sigmoid
-        dr = dr_from_n
-        dr_pre_act = self.r_act.backward(dr)
+        #d
+        self.dbzh = dl_dz_preactiv
 
-        # From equation 4
-        self.dWrx = np.outer(dr_pre_act, self.x)
-        self.dbrx = dr_pre_act
-        self.dWrh = np.outer(dr_pre_act, self.hidden)
-        self.dbrh = dr_pre_act
+        #e4: this is the same as eq3 but with change of variables
+        #a
+        dl_dr_preactiv = self.r_activ.backward(dl_drt)
+        self.dWrx = np.outer(dl_dr_preactiv, self.x)
 
-        dx += np.dot(self.Wrx.T, dr_pre_act)
-        dh_prev_t += np.dot(self.Wrh.T, dr_pre_act)
+        #b
+        self.dbrx = dl_dr_preactiv
 
-        dx += np.dot(self.Wnx.T, dn_pre_act)
+        #c
+        self.dWrh = np.outer(dl_dr_preactiv, self.h_prev_t)
 
-        assert dx.shape == (self.d,)
-        assert dh_prev_t.shape == (self.h,)
+        #d
+        self.dbrh = dl_dr_preactiv
 
-        return dx, dh_prev_t
+        #eq 5
+        dx = ( dl_dn_preactiv @ self.Wnx )  + ( dl_dz_preactiv @ self.Wzx ) + (dl_dr_preactiv @ self.Wrx)
+
+        #dl_dh_prev_t: we'll have to go down 4 paths
+        dh = ((delta * self.z) +
+              (dl_dn_preactiv @ ( self.Wnh * self.r.reshape(-1, 1) ) ) +
+              (dl_dz_preactiv @ self.Wzh) +
+              (dl_dr_preactiv @ self.Wrh))
+
+        return dx, dh
+
+
+
+

@@ -57,14 +57,21 @@ class CharacterPredictor(object):
             hidden state at current time-step.
 
         """
-        hnext = self.gru(x, h)
-        # self.projection expects input in the form of batch_size * input_dimension
-        # Therefore, reshape the input of self.projection as (1,-1)
-        logits = self.projection(hnext.reshape(1, -1))
-        logits = logits.reshape(
-            -1,
-        )  # uncomment once code implemented
+        hnext = self.gru.forward(x, h)
+
+        logits = self.projection(hnext.reshape(1, -1)) #linear layer expects input as: batch_size x input
+
         return logits, hnext
+
+
+        # hnext = self.gru(x, h)
+        # # self.projection expects input in the form of batch_size * input_dimension
+        # # Therefore, reshape the input of self.projection as (1,-1)
+        # logits = self.projection(hnext.reshape(1, -1))
+        # logits = logits.reshape(
+        #     -1,
+        # )  # uncomment once code implemented
+        # return logits, hnext
 
 
 def inference(net, inputs):
@@ -87,10 +94,10 @@ def inference(net, inputs):
             one per time step of input..
 
     """
+    seq_len, feature_dim = inputs.shape
+    logits = np.zeros(shape =(seq_len, net.num_classes))
+    initial_hidden = np.zeros( shape = net.hidden_dim )
+    for t in range(seq_len):
+        logits[t] , initial_hidden= net.forward(inputs[t], initial_hidden)
 
-    seq_len = inputs.shape[0]
-    logits = np.zeros((seq_len, net.num_classes))
-    h = np.zeros(net.hidden_dim)
-    for i in range(seq_len):
-        logits[i], h = net(inputs[i], h)
     return logits
